@@ -96,20 +96,46 @@ def call_alerts(**kwargs):
                     log_message(1, '%s alert failed. [%s]' % (var[6:], kwargs['bssid']))
 
 def packet_handler(pkt):
+    # print("packet", pkt)
+
     rtlen = struct.unpack('h', pkt[2:4])[0]
-    ftype = (ord(pkt[rtlen]) >> 2) & 3
-    stype = ord(pkt[rtlen]) >> 4
+    # print("rtlen", rtlen) # it's usually 18
+
+    print(pkt[rtlen]) #64
+    # ord(64) => error
+    # chr(64) => '@'
+
+    packetTypeTarget = chr(pkt[rtlen])
+
+    # Old way, errored out
+    # ftype = (ord(str(pkt[rtlen])) >> 2) & 3
+
+    # New way: works!
+    ftype = (ord(packetTypeTarget) >> 2) & 3
+    # print("ftype: ", ftype)
+    
+    stype = ord(packetTypeTarget) >> 4
+    # print("stype", stype)
+
     # check if probe request
     if ftype == 0 and stype == 4:
+        print("Probe request confirmed")
         rtap = pkt[:rtlen]
         frame = pkt[rtlen:]
         # parse bssid
-        bssid = frame[10:16].encode('hex')
-        bssid = ':'.join([bssid[x:x+2] for x in xrange(0, len(bssid), 2)])
+        # todo: 'bytes' object has no attribute 'encode'
+        bssid = frame[10:16].hex()
+        bssid = ':'.join([bssid[x:x+2] for x in range(0, len(bssid), 2)])
+        print("BSSID converted:", bssid)
         # parse rssi
         rssi = struct.unpack("b",rtap[-4:-3])[0]
+        print("RSSI: ", rssi)
         # parse essid
-        essid = frame[26:26+ord(frame[25])] if ord(frame[25]) > 0 else '<None>'
+        essid = frame[26:26+frame[25]] if frame[25] > 0 else '<None>'
+
+        # //original. erroring  on ord() expected string of length 1
+        # essid = frame[26:26+ord(frame[25])] if ord(frame[25]) > 0 else '<None>'
+        
         # build data tuple
         data = (bssid, rssi, essid)
         # check whitelist for probing mac address
@@ -154,6 +180,9 @@ with sqlite3.connect(LOG_FILE) as conn:
             try:
                 (header, pkt) = cap.next()
                 if cap.datalink() == 0x7F:
+                    # print("Cap itself", cap)
+                    # print("Cap header", header)
+                    # print("Cap packet", pkt)
                     packet_handler(pkt)
             except KeyboardInterrupt:
                 break
